@@ -46,6 +46,7 @@
 	 require([
              "dojo/number",
 	     "dojo/dom",
+	     "dojo/json",
 	     "dojo/_base/array",
 	     "dijit/form/MultiSelect",
 	     "dijit/registry",
@@ -56,7 +57,7 @@
              "esri/map",
              "esri/renderers/HeatmapRenderer",
              "dojo/domReady!"
-	 ], function (number, dom, arrayUtils, MultiSelect, registry, InfoTemplate, TimeSlider, FeatureLayer, MapServiceLayer, Map, HeatmapRenderer){
+	 ], function (number, dom, JSON, arrayUtils, MultiSelect, registry, InfoTemplate, TimeSlider, FeatureLayer, MapServiceLayer, Map, HeatmapRenderer){
 	     
              var basemap = new MapServiceLayer("http://www.sjcgis.org/arcgis/rest/services/Basemaps/General_Basemap/MapServer");
              
@@ -230,7 +231,7 @@
 	    </p>
 	    <p>
 		<label for="accTypeControl">Accident Types : </label><br/>
-		<select id="accTypeControl">
+		<select id="accTypeControl" multiple="true">
 		    <option value="1" selected>Property Damage</option>
 		    <option value="2" selected>Injury</option>
 		    <option value="3" selected>Fatal</option>
