@@ -67,22 +67,22 @@
              });
              
              map.addLayer(basemap);
-             // --------------------------------------------------------------------
-             // Format the magnitude value in the pop up to show one decimal place.
-             // Uses the dojo/number module to perform formatting.
-             // --------------------------------------------------------------------
-             formatMagnitude = function (value, key, data){
-		 return number.format(value, {places: 1, locale: "en-us"});
-             };
-
-             var infoTemplate = new InfoTemplate("Attributes",
-						 "Name: ${Name}<br>Magnitude: ${Magnitude:formatMagnitude}");
              
              var blurCtrl = document.getElementById("blurControl");
              var maxCtrl = document.getElementById("maxControl");
              var minCtrl = document.getElementById("minControl");
              var valCtrl = document.getElementById("valueControl");
              var islandCtrl = document.getElementById("islandControl");
+
+	     var getDefinitionExpression = function() {
+		 var island = islandCtrl.value;
+		 islandExp = "Island = '" + island + "'";
+		 var accTypes = JSON.stringify(accTypeSel.value);
+		 var sevString = accTypes.replace(/"/g, "'");
+                 sevString = sevString.replace(/^\[(.+)\]$/,"($1)");
+		 typeExp = "Sev_ in " + sevString;
+                 return islandExp + " AND " + typeExp;
+             };
 
 	     /** Add time slider widget **/
 	     function initSlider(results) {
@@ -94,7 +94,7 @@
 		 timeExtent.startTime = new Date("1/1/2001 UTC");
 		 timeExtent.endTime = new Date("12/31/2014 UTC");
 		 timeSlider.setThumbCount(2);
-		 timeSlider.setThumbIndexes([0,15]);
+		 timeSlider.setThumbIndexes([4,14]);
 		 timeSlider.createTimeStopsByTimeInterval(timeExtent, 1, "esriTimeUnitsYears");
 		 timeSlider.startup();
 
@@ -107,25 +107,16 @@
 		 });
 		 timeSlider.setLabels(labels);
 
-		 timeSlider.on("time-extent-change", function(evt) {
-		     var startValString = evt.startTime.getUTCFullYear();
-		     var endValString = evt.endTime.getUTCFullYear();
-		     dom.byId("daterange").innerHTML = "<i>" + startValString + " and " + endValString + "</i>";
-		 });
 	     }
 	     /** Add multiple select option for accident types **/
 	     var accTypeCtrl = dom.byId("accTypeControl");
-	     var accTypeSel = new MultiSelect({ name: 'accTypeControl'}, accTypeCtrl);
-	     
-	     /** Set default definition expression **/
-	     var typeExp = "Sev_ in ('1','2','3')";
-	     var islandExp = "Island = '" + islandCtrl.value + "'";
+	     var accTypeSel = new MultiSelect({ name: 'accTypeControl'}, accTypeCtrl);	     
 
              var serviceURL = "//sjcgis.org/arcgis/rest/services/Andromeda/Traffic_Collisions/MapServer/0";
              var heatmapFeatureLayerOptions = {
 		 mode: FeatureLayer.MODE_ONDEMAND,
 		 outFields: ["Accident__", "Island", "Crash_Date", "Crash_Time", "Road_Name", "Location", "Sev_", "Tot_Inj", "Tot_Fatal", "F__Veh", "Collision_Type", "Weather", "Light", "Road_Condition"],
-		 definitionExpression: islandExp + " AND " + typeExp
+		 definitionExpression: getDefinitionExpression()
              };
 	     console.debug("Initial def Expression is " + heatmapFeatureLayerOptions.definitionExpression);
              var heatmapFeatureLayer = new FeatureLayer(serviceURL, heatmapFeatureLayerOptions);
@@ -150,6 +141,19 @@
 		     val.innerHTML = evt.target.value;
 		 });
              };
+	     var updateMapScale = function() {
+		 var mapScaleId = dom.byId("mapScale");
+		 var mapScale = map.getScale();
+		 mapScaleId.innerHTML = mapScale;
+		 return;
+	     };
+	     var updateDefinitionExpression = function() {
+		var defExpression = getDefinitionExpression();
+                heatmapFeatureLayer.setDefinitionExpression(defExpression);
+                heatmapFeatureLayer.redraw();
+	     };
+	     map.on("zoom-end", updateMapScale);
+	     map.on("load", updateMapScale);
              for (var i = 0; i < sliders.length; i++) {
 		 addLiveValue(sliders.item(i));
              }
@@ -175,23 +179,8 @@
 		     heatmapFeatureLayer.redraw();
 		 }
              });
-             islandCtrl.addEventListener("change", function(evt){
-		 var r = evt.target.value;
-		 islandExp = "Island = '" + r + "'";
-		 console.debug("Expression is " + islandExp + " AND " + typeExp);
-		 heatmapFeatureLayer.setDefinitionExpression(islandExp + " AND " + typeExp);
-		 heatmapFeatureLayer.redraw();
-             });
-	     accTypeSel.on("change", function(evt){
-		 var items = accTypeSel.get('value');
-		 items = JSON.stringify(items);
-		 var sevString = items.replace(/"/g, "'");
-                 sevString = sevString.replace(/^\[(.+)\]$/,"($1)");
-		 typeExp = "Sev_ in " + sevString;
-		 console.debug(islandExp + " AND " + typeExp);
-		 heatmapFeatureLayer.setDefinitionExpression(islandExp + " AND " + typeExp);
-		 heatmapFeatureLayer.redraw();
-	     });
+             islandCtrl.addEventListener("change", updateDefinitionExpression);
+	     accTypeSel.on("change", updateDefinitionExpression);
 	     
              // --------------------------------------------------------------------
              // When check / uncheck the control for the HeatmapRenderer field,
@@ -248,7 +237,7 @@
 		</select>
 	    </p>
 	    
-	    <p>Blur Radius : <span id="blurValue">10</span></p>
+	    <p>Blur Radius : <span id="blurValue">10</span> Pixels</p>
 	    <input id="blurControl" type="range" max=20 min=0 value=10 step=1/>
 
 	    <p>Max Value : <span id="maxValue">75</span></p>
@@ -256,6 +245,8 @@
 
 	    <p>Min Value : <span id="minValue">20</span></p>
 	    <input id="minControl" type="range" max=100 min=0 value=20 step=1/>
+
+	    <p>Map Scale : <span id="mapScale"></span></p>
 	</div>
     </body>
 </html>
