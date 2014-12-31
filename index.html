@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+    <head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+	<meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no">
+	<title>FeatureLayer using Weighted HeatmapRenderer</title>
+	<link rel="stylesheet" href="//js.arcgis.com/3.12/dijit/themes/claro/claro.css">
+	<link rel="stylesheet" href="//js.arcgis.com/3.12/esri/css/esri.css">
+	<style type="text/css">
+	 html, body, #map {
+	     width: 100%;
+	     height: 100%;
+	     margin: 0;
+	     padding: 0;
+	 }
+
+	 .blurInfo {
+	     position: absolute;
+	     top: 10px;
+	     right: 5px;
+	     font-size: 1.25em;
+	     font-family: monospace;
+	     color: #4C4C4C;
+	     width: 350px;
+	     background-color: #FFFFFF;
+	     padding: 10px;
+	     border: 2px solid #57585A;
+	     border-radius: 20px;
+	 }
+
+	 .blurInfo p span {
+	     background-color: #FFFFFF;
+	     padding: 0 5px;
+	     border-radius: 5px;
+	 }
+
+	 .blurInfo input[type=range] {
+	     width: 100%;
+	     display: block;
+	 }
+	</style>
+	<script src="//js.arcgis.com/3.12/"></script>
+
+	<script>
+	 var map;
+	 require([
+             "dojo/number",
+	     "dojo/dom",
+	     "dojo/_base/array",
+	     "dijit/form/MultiSelect",
+	     "dijit/registry",
+             "esri/InfoTemplate",
+	     "esri/dijit/TimeSlider",
+             "esri/layers/FeatureLayer",
+             "esri/layers/ArcGISTiledMapServiceLayer",
+             "esri/map",
+             "esri/renderers/HeatmapRenderer",
+             "dojo/domReady!"
+	 ], function (number, dom, arrayUtils, MultiSelect, registry, InfoTemplate, TimeSlider, FeatureLayer, MapServiceLayer, Map, HeatmapRenderer){
+	     
+             var basemap = new MapServiceLayer("http://www.sjcgis.org/arcgis/rest/services/Basemaps/General_Basemap/MapServer");
+             
+             map = new Map("map", {
+		 scale: 192000,
+		 minScale: 231996,
+		 maxScale: 24000
+             });
+             
+             map.addLayer(basemap);
+             // --------------------------------------------------------------------
+             // Format the magnitude value in the pop up to show one decimal place.
+             // Uses the dojo/number module to perform formatting.
+             // --------------------------------------------------------------------
+             formatMagnitude = function (value, key, data){
+		 return number.format(value, {places: 1, locale: "en-us"});
+             };
+
+             var infoTemplate = new InfoTemplate("Attributes",
+						 "Name: ${Name}<br>Magnitude: ${Magnitude:formatMagnitude}");
+             
+             var blurCtrl = document.getElementById("blurControl");
+             var maxCtrl = document.getElementById("maxControl");
+             var minCtrl = document.getElementById("minControl");
+             var valCtrl = document.getElementById("valueControl");
+             var islandCtrl = document.getElementById("islandControl");
+
+	     /** Add time slider widget **/
+	     function initSlider(results) {
+		 var timeSlider = new TimeSlider({
+		     style: "width: 100%;"
+		 },dom.byId("timeSliderDiv"));
+		 map.setTimeSlider(timeSlider);
+		 var timeExtent = new esri.TimeExtent();
+		 timeExtent.startTime = new Date("1/1/2001 UTC");
+		 timeExtent.endTime = new Date("12/31/2014 UTC");
+		 timeSlider.setThumbCount(2);
+		 timeSlider.setThumbIndexes([0,15]);
+		 timeSlider.createTimeStopsByTimeInterval(timeExtent, 1, "esriTimeUnitsYears");
+		 timeSlider.startup();
+
+		 var labels = arrayUtils.map(timeSlider.timeStops, function(timeStop, i) {
+		     if (i % 2 === 0) {
+			 return timeStop.getUTCFullYear();
+		     } else {
+			 return "";
+		     }
+		 });
+		 timeSlider.setLabels(labels);
+
+		 timeSlider.on("time-extent-change", function(evt) {
+		     var startValString = evt.startTime.getUTCFullYear();
+		     var endValString = evt.endTime.getUTCFullYear();
+		     dom.byId("daterange").innerHTML = "<i>" + startValString + " and " + endValString + "</i>";
+		 });
+	     }
+	     /** Add multiple select option for accident types **/
+	     var accTypeCtrl = dom.byId("accTypeControl");
+	     var accTypeSel = new MultiSelect({ name: 'accTypeControl'}, accTypeCtrl);
+	     
+	     /** Set default definition expression **/
+	     var typeExp = "Sev_ in ('1','2','3')";
+	     var islandExp = "Island = '" + islandCtrl.value + "'";
+
+             var serviceURL = "//sjcgis.org/arcgis/rest/services/Andromeda/Traffic_Collisions/MapServer/0";
+             var heatmapFeatureLayerOptions = {
+		 mode: FeatureLayer.MODE_ONDEMAND,
+		 outFields: ["Accident__", "Island", "Crash_Date", "Crash_Time", "Road_Name", "Location", "Sev_", "Tot_Inj", "Tot_Fatal", "F__Veh", "Collision_Type", "Weather", "Light", "Road_Condition"],
+		 definitionExpression: islandExp + " AND " + typeExp
+             };
+	     console.debug("Initial def Expression is " + heatmapFeatureLayerOptions.definitionExpression);
+             var heatmapFeatureLayer = new FeatureLayer(serviceURL, heatmapFeatureLayerOptions);
+
+             var heatmapRenderer = new HeatmapRenderer({
+		 field: "Sev_",
+		 blurRadius: blurCtrl.value,
+		 maxPixelIntensity: maxCtrl.value,
+		 minPixelIntensity: minCtrl.value
+             });
+
+             heatmapFeatureLayer.setRenderer(heatmapRenderer);
+             map.addLayer(heatmapFeatureLayer);
+	     heatmapFeatureLayer.on("load", initSlider);
+		     
+             /** Add event handlers for interactivity **/
+
+             var sliders = document.querySelectorAll(".blurInfo p~input[type=range]");
+             var addLiveValue = function (ctrl){
+		 var val = ctrl.previousElementSibling.querySelector("span");
+		 ctrl.addEventListener("input", function (evt){
+		     val.innerHTML = evt.target.value;
+		 });
+             };
+             for (var i = 0; i < sliders.length; i++) {
+		 addLiveValue(sliders.item(i));
+             }
+
+             blurCtrl.addEventListener("change", function (evt){
+		 var r = +evt.target.value;
+		 if (r !== heatmapRenderer.blurRadius) {
+		     heatmapRenderer.blurRadius = r;
+		     heatmapFeatureLayer.redraw();
+		 }
+             });
+             maxCtrl.addEventListener("change", function (evt){
+		 var r = +evt.target.value;
+		 if (r !== heatmapRenderer.maxPixelIntensity) {
+		     heatmapRenderer.maxPixelIntensity = r;
+		     heatmapFeatureLayer.redraw();
+		 }
+             });
+             minCtrl.addEventListener("change", function (evt){
+		 var r = +evt.target.value;
+		 if (r !== heatmapRenderer.minPixelIntensity) {
+		     heatmapRenderer.minPixelIntensity = r;
+		     heatmapFeatureLayer.redraw();
+		 }
+             });
+             islandCtrl.addEventListener("change", function(evt){
+		 var r = evt.target.value;
+		 islandExp = "Island = '" + r + "'";
+		 console.debug("Expression is " + islandExp + " AND " + typeExp);
+		 heatmapFeatureLayer.setDefinitionExpression(islandExp + " AND " + typeExp);
+		 heatmapFeatureLayer.redraw();
+             });
+	     accTypeSel.on("change", function(evt){
+		 var items = accTypeSel.get('value');
+		 items = JSON.stringify(items);
+		 var sevString = items.replace(/"/g, "'");
+                 sevString = sevString.replace(/^\[(.+)\]$/,"($1)");
+		 typeExp = "Sev_ in " + sevString;
+		 console.debug(islandExp + " AND " + typeExp);
+		 heatmapFeatureLayer.setDefinitionExpression(islandExp + " AND " + typeExp);
+		 heatmapFeatureLayer.redraw();
+	     });
+	     
+             // --------------------------------------------------------------------
+             // When check / uncheck the control for the HeatmapRenderer field,
+             // we will leave the blurRadius and the minPixelIntensity values the
+             // same. However we will adjust the maxPixelIntensity value so it
+             // spreads the colors across the range of magnitude values. For your
+             // own dataset, you will need to experiment to find what looks good
+             // based upon the level of geography when you display the heatmap
+             // and the values in your dataset.
+             // --------------------------------------------------------------------
+             valCtrl.addEventListener("change", function (evt){
+		 var chk = evt.target.checked;
+		 if (!chk) {
+		     document.getElementById("maxValue").innerHTML = 100;
+		     maxCtrl.value = 100;
+		     heatmapRenderer.maxPixelIntensity = 100;
+		 }
+		 else {
+		     document.getElementById("maxValue").innerHTML = 100;
+		     maxCtrl.value = 100;
+		     heatmapRenderer.maxPixelIntensity = 100;
+
+		 }
+		 heatmapRenderer.field = (chk) ? "Sev_" : null;
+		 heatmapFeatureLayer.redraw();
+             });
+	 });
+	</script>
+    </head>
+    <body>
+	<div id="map"></div>
+	<div class="blurInfo">
+	    <p>
+		<label for="islandControl">Island : </label>
+		<select id="islandControl" name="islandControl">
+		    <option value="Lopez">Lopez</option>
+		    <option value="Orcas" selected>Orcas</option>
+		    <option value="San Juan">San Juan</option>
+		</select>
+	    </p>
+	    <p> 
+		<label for="valueControl">Weight by Severity</label>
+		<input id="valueControl" type="checkbox" checked />
+	    </p>
+	    <p>Filter by Year : 
+		<div id="timeSliderDiv"></div>
+	    </p>
+	    <p>
+		<label for="accTypeControl">Accident Types : </label><br/>
+		<select id="accTypeControl">
+		    <option value="1" selected>Property Damage</option>
+		    <option value="2" selected>Injury</option>
+		    <option value="3" selected>Fatal</option>
+		</select>
+	    </p>
+	    
+	    <p>Blur Radius : <span id="blurValue">10</span></p>
+	    <input id="blurControl" type="range" max=20 min=0 value=10 step=1/>
+
+	    <p>Max Value : <span id="maxValue">75</span></p>
+	    <input id="maxControl" type="range" max=250 min=0 value=75 step=1/>
+
+	    <p>Min Value : <span id="minValue">20</span></p>
+	    <input id="minControl" type="range" max=100 min=0 value=20 step=1/>
+	</div>
+    </body>
+</html>
